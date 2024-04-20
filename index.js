@@ -38,7 +38,6 @@ app.post('/download', async (req, res) => {
     try {
         // Fetch video info using ytdl-core
         const info = await ytdl.getInfo(videoURL);
-        console.log('Video info:', info); // Log the fetched video info
 
         // Get highest quality audio stream
         const audioFormat = ytdl.chooseFormat(info.formats, { filter: 'audioonly' });
