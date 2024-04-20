@@ -3,6 +3,7 @@ const express = require('express');
 const ytdl = require('ytdl-core');
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 const ffmpeg = require('fluent-ffmpeg');
+const sanitize = require('sanitize-filename');
 
 // Set ffmpeg path
 ffmpeg.setFfmpegPath(ffmpegPath);
@@ -16,32 +17,23 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static files from the 'public' directory
 app.use(express.static('public'));
 
-// Track unique countries and total videos downloaded
-const countries = new Set();
+// Track total videos downloaded
 let totalVideos = 0;
+
+// Function to sanitize filename by keeping only alphanumeric characters and spaces
+function sanitizeFilename(filename) {
+    // Remove invalid characters and keep only alphanumeric characters and spaces
+    return filename.replace(/[^a-zA-Z0-9\s]/g, '');
+}
 
 // Define route for the root URL
 app.get('/', (req, res) => {
-    // Get IP address of the user
-    const ipAddress = req.ip;
-    console.log(`User with IP address ${ipAddress} accessed the site.`);
-
-    // Increment totalVideos counter
-    totalVideos++;
-
-    // Add country to set
-    const countryCode = req.headers['cf-ipcountry']; // Assuming Cloudflare header is used for country code
-    if (countryCode) {
-        countries.add(countryCode);
-    }
-
     res.sendFile(__dirname + '/index.html');
 });
 
 // Define route for downloading YouTube video as MP3
 app.post('/download', async (req, res) => {
     const videoURL = req.body.url; // Get YouTube video URL from form input
-    console.log('Received request to convert video:', videoURL); // Log the received URL
 
     try {
         // Fetch video info using ytdl-core
@@ -51,8 +43,14 @@ app.post('/download', async (req, res) => {
         // Get highest quality audio stream
         const audioFormat = ytdl.chooseFormat(info.formats, { filter: 'audioonly' });
 
+        // Extract video title and sanitize it for use as filename
+        const title = sanitizeFilename(info.videoDetails.title);
+
+        // Set filename for the downloaded MP3 file
+        const filename = `${title}.mp3`;
+
         // Set response headers for file download
-        res.setHeader('Content-Disposition', `attachment; filename="${info.title}.mp3"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.setHeader('Content-Type', 'audio/mpeg');
 
         // Convert video to MP3 using ffmpeg and pipe the output to response
@@ -60,17 +58,18 @@ app.post('/download', async (req, res) => {
             .audioCodec('libmp3lame')
             .format('mp3')
             .pipe(res);
+
+        // Increment totalVideos counter
+        totalVideos++;
     } catch (error) {
         console.error('Error downloading or converting video:', error);
         res.status(500).send('Error downloading or converting video.');
     }
 });
 
-// Define route for getting statistics
+// Define route for getting total videos downloaded
 app.get('/stats', (req, res) => {
     res.json({
-        ipAddresses: Array.from(countries),
-        totalCountries: countries.size,
         totalVideos
     });
 });
